@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Little Jukebox</title>
+  <style>
+    html, body {
+      width: 100%;
+      min-height: 100%;
+      margin: 0;
+      background: #121212;
+      color: #ffffff;
+      font-family: Arial, sans-serif;
+    }
+
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 24px 16px 40px;
+      text-align: center;
+    }
+
+    #gallery {
+      font-size: 0;
+    }
+
+    #catalog-status {
+      display: none;
+    }
+
+    #catalog-status.error {
+      display: block;
+      margin: 0 0 12px;
+      color: #ff9b9b;
+      font-size: 16px;
+    }
+
+    #playback-controls {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.32);
+      border-radius: 44px;
+      background: rgba(18, 18, 18, 0.58);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+      backdrop-filter: blur(5px);
+    }
+
+    .playback-control {
+      display: flex;
+      width: 70px;
+      height: 70px;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      border: 2px solid rgba(255, 255, 255, 0.7);
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.18);
+      color: #ffffff;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    .playback-control:focus {
+      outline: 5px solid #ffffff;
+      outline-offset: 4px;
+    }
+
+    .playback-control.active {
+      border-color: #ffffff;
+      background: rgba(45, 127, 249, 0.9);
+      box-shadow: 0 0 18px #2d7ff9;
+    }
+
+    .playback-control svg {
+      width: 46px;
+      height: 46px;
+    }
+
+    .track {
+      display: inline-block;
+      width: 44%;
+      margin: 12px 2%;
+      padding: 0;
+      overflow: hidden;
+      border: 5px solid #2f2f2f;
+      border-radius: 16px;
+      background: #242424;
+      color: #ffffff;
+      cursor: pointer;
+      font: inherit;
+      vertical-align: top;
+    }
+
+    .track:focus {
+      outline: 5px solid #ffffff;
+      outline-offset: 4px;
+    }
+
+    .track.active {
+      border-color: #2d7ff9;
+      box-shadow: 0 0 24px #2d7ff9;
+    }
+
+    .track img {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    .track-title {
+      display: block;
+      padding: 13px 8px 15px;
+      font-size: 24px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <p id="catalog-status" role="status" aria-live="polite"></p>
+    <div id="gallery"></div>
+    <audio id="audio" preload="auto"></audio>
+  </main>
+  <div id="playback-controls" aria-label="Playback controls">
+    <button id="auto-advance" class="playback-control" type="button" aria-pressed="false" aria-label="Continue with the next song" title="Continue with the next song">
+      <svg viewBox="0 0 96 96" aria-hidden="true">
+        <path d="M17 25v46l34-23z" fill="currentColor"/>
+        <path d="M53 48h25m-11-11 11 11-11 11" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="7"/>
+      </svg>
+    </button>
+    <button id="repeat-playlist" class="playback-control" type="button" aria-pressed="false" aria-label="Repeat the playlist" title="Repeat the playlist">
+      <svg viewBox="0 0 96 96" aria-hidden="true">
+        <path d="M24 35h38m0 0-9-9m9 9-9 9M72 61H34m0 0 9-9m-9 9 9 9" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="7"/>
+      </svg>
+    </button>
+  </div>
+
+  <script>
+    (function () {
+      var audio = document.getElementById('audio');
+      var gallery = document.getElementById('gallery');
+      var catalogStatus = document.getElementById('catalog-status');
+      var autoAdvanceButton = document.getElementById('auto-advance');
+      var repeatPlaylistButton = document.getElementById('repeat-playlist');
+      var catalogTracks = [];
+      var catalogSignature = '';
+      var catalogRequestInProgress = false;
+      var activeTrack = null;
+      var activeTile = null;
+      var isStarting = false;
+      var autoAdvanceEnabled = false;
+      var repeatPlaylistEnabled = false;
+      var playbackControlsStorageKey = 'little-jukebox-playback-controls';
+
+      function setCatalogStatus(message, isError) {
+        catalogStatus.className = isError ? 'error' : '';
+        catalogStatus.innerHTML = '';
+        catalogStatus.appendChild(document.createTextNode(message));
+      }
+
+      function setControlState(button, enabled) {
+        button.className = 'playback-control' + (enabled ? ' active' : '');
+        button.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+      }
+
+      function updateControlStates() {
+        if (!autoAdvanceEnabled) {
+          repeatPlaylistEnabled = false;
+        }
+
+        setControlState(autoAdvanceButton, autoAdvanceEnabled);
+        setControlState(repeatPlaylistButton, repeatPlaylistEnabled);
+      }
+
+      function saveControlStates() {
+        try {
+          window.localStorage.setItem(playbackControlsStorageKey, JSON.stringify({
+            autoAdvance: autoAdvanceEnabled,
+            repeatPlaylist: repeatPlaylistEnabled
+          }));
+        } catch (error) {
+          // The player continues to work if this browser does not allow storage.
+        }
+      }
+
+      function restoreControlStates() {
+        var savedControls;
+
+        try {
+          savedControls = window.localStorage.getItem(playbackControlsStorageKey);
+          if (savedControls) {
+            savedControls = JSON.parse(savedControls);
+            autoAdvanceEnabled = savedControls.autoAdvance === true;
+            repeatPlaylistEnabled = savedControls.repeatPlaylist === true;
+          }
+        } catch (error) {
+          // The player continues to work if saved settings cannot be read.
+        }
+
+        updateControlStates();
+      }
+
+      function getTrackIndex(track) {
+        var index;
+
+        if (!track) {
+          return -1;
+        }
+
+        for (index = 0; index < catalogTracks.length; index += 1) {
+          if (catalogTracks[index].id === track.id) {
+            return index;
+          }
+        }
+
+        return -1;
+      }
+
+      function getTile(index) {
+        return gallery.getElementsByTagName('button')[index];
+      }
+
+      function setActiveTile(tile) {
+        var tiles = gallery.getElementsByTagName('button');
+        var index;
+
+        for (index = 0; index < tiles.length; index += 1) {
+          tiles[index].className = 'track';
+        }
+
+        activeTile = tile;
+        if (activeTile) {
+          activeTile.className = 'track active';
+        }
+      }
+
+      function stopPlayback() {
+        isStarting = false;
+        audio.pause();
+        audio.currentTime = 0;
+        activeTrack = null;
+        setActiveTile(null);
+      }
+
+      function showError() {
+        isStarting = false;
+        activeTrack = null;
+        setActiveTile(null);
+      }
+
+      function playTrack(track, tile) {
+        var requestedId;
+        var playback;
+
+        if (activeTrack && activeTrack.id === track.id && (!audio.paused || isStarting)) {
+          stopPlayback();
+          return;
+        }
+
+        activeTrack = track;
+        isStarting = true;
+        setActiveTile(tile);
+        audio.src = track.audio;
+        audio.load();
+        requestedId = track.id;
+        playback = audio.play();
+
+        if (playback && typeof playback.catch === 'function') {
+          playback.catch(function () {
+            if (activeTrack && activeTrack.id === requestedId && isStarting) {
+              showError();
+            }
+          });
+        }
+      }
+
+      function playNextTrack() {
+        var currentIndex = getTrackIndex(activeTrack);
+        var nextIndex = currentIndex + 1;
+
+        if (currentIndex === -1) {
+          return false;
+        }
+
+        if (nextIndex < catalogTracks.length) {
+          playTrack(catalogTracks[nextIndex], getTile(nextIndex));
+          return true;
+        }
+
+        if (repeatPlaylistEnabled) {
+          playTrack(catalogTracks[0], getTile(0));
+          return true;
+        }
+
+        return false;
+      }
+
+      function addTrack(track) {
+        var tile = document.createElement('button');
+        var cover = document.createElement('img');
+        var title = document.createElement('span');
+
+        tile.type = 'button';
+        tile.className = 'track';
+        tile.title = 'Play or stop ' + track.title;
+        cover.src = track.cover;
+        cover.alt = track.title;
+        title.className = 'track-title';
+        title.appendChild(document.createTextNode(track.title));
+        tile.appendChild(cover);
+        tile.appendChild(title);
+        tile.onclick = function () {
+          playTrack(track, tile);
+        };
+        gallery.appendChild(tile);
+      }
+
+      function renderCatalog(tracks) {
+        var previouslyActiveTrack = activeTrack;
+        var previousAudio = previouslyActiveTrack ? previouslyActiveTrack.audio : null;
+        var currentIndex;
+        var index;
+
+        catalogTracks = tracks;
+        gallery.innerHTML = '';
+
+        for (index = 0; index < catalogTracks.length; index += 1) {
+          addTrack(catalogTracks[index]);
+        }
+
+        if (!previouslyActiveTrack) {
+          return;
+        }
+
+        currentIndex = getTrackIndex(previouslyActiveTrack);
+        if (currentIndex !== -1 && catalogTracks[currentIndex].audio === previousAudio) {
+          activeTrack = catalogTracks[currentIndex];
+          setActiveTile(getTile(currentIndex));
+          return;
+        }
+
+        stopPlayback();
+      }
+
+      function isUsableTrack(track) {
+        return track && typeof track.id === 'string' && typeof track.title === 'string' &&
+          typeof track.cover === 'string' && typeof track.audio === 'string';
+      }
+
+      function loadCatalog() {
+        var request = new XMLHttpRequest();
+
+        if (catalogRequestInProgress) {
+          return;
+        }
+
+        catalogRequestInProgress = true;
+        request.open('GET', 'catalog.json?updated=' + new Date().getTime(), true);
+        request.timeout = 10000;
+
+        request.onreadystatechange = function () {
+          var catalog;
+          var tracks;
+          var signature;
+          var index;
+
+          if (request.readyState !== 4) {
+            return;
+          }
+
+          catalogRequestInProgress = false;
+
+          if (request.status < 200 || request.status >= 300) {
+            setCatalogStatus('The catalog could not be loaded. The current playlist is unchanged.', true);
+            return;
+          }
+
+          try {
+            catalog = JSON.parse(request.responseText);
+          } catch (error) {
+            setCatalogStatus('The catalog is not valid JSON. The current playlist is unchanged.', true);
+            return;
+          }
+
+          if (!catalog.tracks || Object.prototype.toString.call(catalog.tracks) !== '[object Array]') {
+            setCatalogStatus('The catalog must contain a tracks list. The current playlist is unchanged.', true);
+            return;
+          }
+
+          tracks = [];
+          for (index = 0; index < catalog.tracks.length; index += 1) {
+            if (isUsableTrack(catalog.tracks[index])) {
+              tracks.push(catalog.tracks[index]);
+            }
+          }
+
+          signature = JSON.stringify(tracks);
+          if (signature !== catalogSignature) {
+            renderCatalog(tracks);
+            catalogSignature = signature;
+          }
+
+          setCatalogStatus('', false);
+        };
+        request.ontimeout = function () {
+          catalogRequestInProgress = false;
+          setCatalogStatus('The catalog request timed out. The current playlist is unchanged.', true);
+        };
+        request.send();
+      }
+
+      audio.onplaying = function () {
+        isStarting = false;
+      };
+
+      audio.onended = function () {
+        isStarting = false;
+        if (autoAdvanceEnabled && playNextTrack()) {
+          return;
+        }
+        activeTrack = null;
+        setActiveTile(null);
+      };
+
+      audio.onerror = function () {
+        if (activeTrack) {
+          showError();
+        }
+      };
+
+      autoAdvanceButton.onclick = function () {
+        autoAdvanceEnabled = !autoAdvanceEnabled;
+        updateControlStates();
+        saveControlStates();
+      };
+
+      repeatPlaylistButton.onclick = function () {
+        repeatPlaylistEnabled = !repeatPlaylistEnabled;
+        if (repeatPlaylistEnabled) {
+          autoAdvanceEnabled = true;
+        }
+        updateControlStates();
+        saveControlStates();
+      };
+
+      restoreControlStates();
+      loadCatalog();
+      window.setInterval(loadCatalog, 30000);
+    }());
+  </script>
+</body>
+</html>

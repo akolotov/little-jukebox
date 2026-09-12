@@ -1,0 +1,12 @@
+# Local Python environment
+.venv/
+
+# Local Chrome profile used for refrigerator-browser testing
+auth-data/
+
+# Agent working files and runtime media library
+.ai/
+data/
+
+# macOS Finder metadata
+.DS_Store

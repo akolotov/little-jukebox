@@ -1,0 +1,17 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    volumes:
+      - ./data:/data:ro
+    networks:
+      tailscale-ingress:
+        aliases:
+          - little-jukebox
+
+networks:
+  tailscale-ingress:
+    external: true
+    name: tailscale-ingress
