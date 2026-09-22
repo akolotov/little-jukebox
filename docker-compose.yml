@@ -1,15 +1,21 @@
 services:
   web:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ${JUKEBOX_IMAGE:?JUKEBOX_IMAGE must be set}
+    pull_policy: ${JUKEBOX_PULL_POLICY:-always}
     restart: unless-stopped
+    environment:
+      JUKEBOX_BASE_PATH: ${JUKEBOX_BASE_PATH:?JUKEBOX_BASE_PATH must be set}
     volumes:
       - ./data:/data:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "1m"
+        max-file: "1"
     networks:
       tailscale-ingress:
         aliases:
-          - little-jukebox
+          - ${JUKEBOX_DOCKER_ALIAS:?JUKEBOX_DOCKER_ALIAS must be set}
 
 networks:
   tailscale-ingress:

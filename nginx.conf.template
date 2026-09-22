@@ -1,0 +1,47 @@
+server {
+  listen 8080;
+  server_name _;
+
+  include /etc/nginx/mime.types;
+  default_type application/octet-stream;
+
+  location = ${JUKEBOX_BASE_PATH} {
+    return 301 ${JUKEBOX_BASE_PATH}/;
+  }
+
+  location = ${JUKEBOX_BASE_PATH}/ {
+    alias /usr/share/nginx/html/;
+    index index.html;
+    add_header Cache-Control "no-store, no-cache, must-revalidate, max-age=0" always;
+    add_header Pragma "no-cache" always;
+    add_header Expires "0" always;
+  }
+
+  location = ${JUKEBOX_BASE_PATH}/index.html {
+    alias /usr/share/nginx/html/index.html;
+    add_header Cache-Control "no-store, no-cache, must-revalidate, max-age=0" always;
+    add_header Pragma "no-cache" always;
+    add_header Expires "0" always;
+  }
+
+  location = ${JUKEBOX_BASE_PATH}/catalog.json {
+    alias /data/catalog.json;
+    add_header Cache-Control "no-store, no-cache, must-revalidate, max-age=0" always;
+    add_header Pragma "no-cache" always;
+    add_header Expires "0" always;
+  }
+
+  location ${JUKEBOX_BASE_PATH}/covers/ {
+    alias /data/covers/;
+    add_header Cache-Control "no-cache" always;
+  }
+
+  location ${JUKEBOX_BASE_PATH}/audio/ {
+    alias /data/music/;
+    add_header Cache-Control "no-cache" always;
+  }
+
+  location / {
+    return 404;
+  }
+}

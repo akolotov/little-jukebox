@@ -184,8 +184,9 @@
       var pendingSeek = null;
       var lastSavedSecond = -1;
       var restoredState = null;
-      var controlsStorageKey = 'little-jukebox-playback-controls';
-      var playbackStorageKey = 'little-jukebox-playback-state';
+      var storageNamespace = window.location.pathname.replace(/\/(?:index\.html)?$/, '') || '/';
+      var controlsStorageKey = 'little-jukebox:' + storageNamespace + ':playback-controls';
+      var playbackStorageKey = 'little-jukebox:' + storageNamespace + ':playback-state';
 
       function setCatalogStatus(message, isError) {
         catalogStatus.className = isError ? 'error' : '';

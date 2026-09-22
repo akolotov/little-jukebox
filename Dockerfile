@@ -1,4 +1,9 @@
-FROM nginx:alpine
+FROM nginxinc/nginx-unprivileged:alpine
 
-COPY nginx.conf /etc/nginx/nginx.conf
-COPY site/ /usr/share/nginx/html/apps/little-jukebox/
+ENV JUKEBOX_BASE_PATH=/apps/little-jukebox \
+    NGINX_ENVSUBST_FILTER=^JUKEBOX_BASE_PATH$
+
+COPY nginx.conf.template /etc/nginx/templates/default.conf.template
+COPY site/ /usr/share/nginx/html/
+
+EXPOSE 8080

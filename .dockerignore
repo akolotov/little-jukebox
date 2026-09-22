@@ -1,4 +1,5 @@
 .git
+.env
 .venv
 .ai
 auth-data

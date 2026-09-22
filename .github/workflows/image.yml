@@ -1,0 +1,102 @@
+name: Validate and publish container image
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: little-jukebox-image-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref == 'refs/heads/main' }}
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/little-jukebox
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    env:
+      COMPOSE_PROJECT_NAME: little-jukebox-ci
+      JUKEBOX_IMAGE: little-jukebox:local
+      JUKEBOX_PULL_POLICY: never
+      JUKEBOX_DOCKER_ALIAS: little-jukebox-ci
+      JUKEBOX_BASE_PATH: /apps/little-jukebox-ci
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Validate Compose configuration
+        run: docker compose config -q
+      - name: Build the shared local image
+        run: docker build -t little-jukebox:local .
+      - name: Create runtime prerequisites
+        run: |
+          mkdir -p data/covers data/music
+          docker network create tailscale-ingress
+      - name: Start and smoke-test the app
+        run: |
+          docker compose up -d
+          docker compose exec -T web wget -q -O /dev/null "http://127.0.0.1:8080${JUKEBOX_BASE_PATH}/"
+      - name: Stop the app
+        if: always()
+        run: docker compose down
+
+  publish:
+    name: Build and publish
+    needs: validate
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+        with:
+          platforms: arm64
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Generate image metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          flavor: latest=auto
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+      - name: Build and publish multi-platform image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          cache-from: type=gha,scope=little-jukebox-image
+          cache-to: type=gha,mode=max,scope=little-jukebox-image
+          provenance: mode=max
+          sbom: true

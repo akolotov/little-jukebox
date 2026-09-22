@@ -1,6 +1,9 @@
 # Local Python environment
 .venv/
 
+# Deployment configuration
+.env
+
 # Local Chrome profile used for refrigerator-browser testing
 auth-data/
 
