@@ -44,12 +44,21 @@ docker compose up -d --build
 Open the app at:
 
 ```text
-https://wabelfish-funnel.taild8e94b.ts.net/apps/little-jukebox/
+https://<funnel-hostname>.<tailnet>.ts.net/apps/little-jukebox/
 ```
 
 On the refrigerator, open that address in its browser and tap a cover. Covers
-appear two per row. Tapping the currently selected cover again stops and
-rewinds its audio; tapping another cover starts that track instead.
+appear in a swipeable carousel near the bottom of the screen. The selected
+cover is centered automatically. Tap a different cover to start that song, or
+tap the selected carousel cover, the large cover, or the center control to
+pause and resume it without losing the current position.
+
+Songs continue automatically in catalog order. The left control enables or
+disables wrapping from the last song back to the first, and the right control
+starts the next song immediately. The selected song, playback position, and
+repeat setting are saved locally. After a page or browser restart, the player
+restores that position in a paused state so it never attempts to bypass the
+browser's autoplay policy.
 
 ## Updating the library
 
