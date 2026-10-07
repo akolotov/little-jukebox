@@ -38,7 +38,8 @@ jobs:
         run: docker build -t little-jukebox:local .
       - name: Create runtime prerequisites
         run: |
-          mkdir -p data/covers data/music
+          mkdir -p data/covers data/music cache/thumbnails
+          sudo chown 101:101 cache/thumbnails
           docker network create tailscale-ingress
       - name: Start and smoke-test the app
         run: |
@@ -47,6 +48,10 @@ jobs:
       - name: Stop the app
         if: always()
         run: docker compose down
+      - name: Test thumbnail cache and persistence
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python tests/thumbnail_integration.py
 
   publish:
     name: Build and publish

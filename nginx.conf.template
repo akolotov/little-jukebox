@@ -1,3 +1,29 @@
+proxy_cache_path /var/cache/nginx/thumbnails levels=1:2
+  keys_zone=thumbnails:2m max_size=128m inactive=30d use_temp_path=off;
+
+server {
+  listen 127.0.0.1:8081;
+  server_name _;
+  access_log off;
+
+  location /thumbs/ {
+    alias /data/covers/;
+    error_page 404 = @missing_thumbnail;
+    image_filter resize 360 -;
+    image_filter_jpeg_quality 75;
+    image_filter_buffer 10M;
+  }
+
+  location @missing_thumbnail {
+    image_filter off;
+    return 404;
+  }
+
+  location / {
+    return 404;
+  }
+}
+
 server {
   listen 8080;
   server_name _;
@@ -34,6 +60,19 @@ server {
   location ${JUKEBOX_BASE_PATH}/covers/ {
     alias /data/covers/;
     add_header Cache-Control "no-cache" always;
+  }
+
+  location ${JUKEBOX_BASE_PATH}/thumbs/ {
+    proxy_pass http://127.0.0.1:8081/thumbs/;
+    proxy_cache thumbnails;
+    proxy_cache_key "thumb360-q75-v1:$uri$is_args$args";
+    proxy_cache_valid 200 7d;
+    proxy_cache_lock on;
+    proxy_cache_lock_timeout 30s;
+    proxy_cache_lock_age 30s;
+    proxy_read_timeout 30s;
+    add_header X-Thumbnail-Cache $upstream_cache_status always;
+    add_header Cache-Control "public, max-age=604800";
   }
 
   location ${JUKEBOX_BASE_PATH}/audio/ {

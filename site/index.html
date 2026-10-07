@@ -431,7 +431,7 @@
         tile.setAttribute('aria-pressed', 'false');
         tile.setAttribute('aria-label', 'Play or pause ' + track.title);
         tile.title = 'Play or pause ' + track.title;
-        cover.src = track.cover;
+        cover.src = track.cover.indexOf('covers/') === 0 ? 'thumbs/' + track.cover.slice(7) : track.cover;
         cover.alt = '';
         cover.onerror = function () { cover.className = 'missing-cover'; };
         title.className = 'track-title';

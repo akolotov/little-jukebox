@@ -32,6 +32,64 @@ its cover and audio file relative to the application:
 Place the referenced files in `data/covers/` and `data/music/`, respectively.
 The paths need not share the same filename.
 
+## Cover thumbnails
+
+The carousel requests `thumbs/song-id.jpg` for a local cover at `covers/song-id.jpg`.
+The large cover uses the original file. The catalog needs only the `cover` field.
+External cover URLs retain their original behavior.
+
+Nginx reduces thumbnails to a maximum width of 360 pixels and preserves their proportions and format.
+It does not enlarge small images. JPEG thumbnails use quality 75.
+If a thumbnail fails, the carousel shows its existing placeholder.
+The carousel does not download the original as a fallback.
+
+Nginx stores completed thumbnails in `cache/thumbnails/` under the deployment directory.
+Staging and production use separate deployment directories and cache directories.
+The cache survives container replacement.
+The cache directory needs write access for Nginx and the host user that operates Docker Desktop.
+Use UID 101 as the owner and the host user's group as the group.
+Mode 2775 permits group writes and preserves the group for new subdirectories.
+The cache holds up to 128 MiB. Entries stay fresh for seven days.
+Nginx removes entries after 30 days without requests.
+The browser can also cache successful thumbnails for seven days.
+
+When you replace a cover, use a new filename and update `cover` in the catalog.
+The new address creates a new thumbnail. Do not overwrite a cover at the same address.
+
+After you publish the catalog, fill the cache before you open the player on the refrigerator.
+Use the application URL that includes its base path:
+
+```bash
+.venv/bin/python scripts/warm_thumbnails.py https://<hostname>/apps/little-jukebox/
+```
+
+If `.venv` does not exist, create it with `python3 -m venv .venv` first.
+The command uses the Python standard library. It needs no additional packages.
+It requests each unique local thumbnail sequentially and returns a nonzero exit code if a request fails.
+It does not read environment files.
+
+The `X-Thumbnail-Cache` response header shows `MISS` for a new thumbnail and `HIT` for a cached thumbnail.
+The internal image handler listens only on `127.0.0.1:8081` inside the container.
+The public handler caches its resized responses, rather than the original images.
+Original files over 10 MiB exceed the image buffer and receive HTTP 415.
+Unsupported or damaged images also fail. These errors do not enter the cache.
+
+## Thumbnail tests
+
+Make sure that Docker and the shared `tailscale-ingress` network are available.
+Build the shared development image and run the Compose integration tests:
+
+```bash
+docker build -t little-jukebox:local .
+.venv/bin/python tests/thumbnail_integration.py
+```
+
+The tests use a separate Compose project and generated media under `.ai/`.
+They expose the application on `127.0.0.1:18089` during the tests.
+If that port is occupied, set `THUMBNAIL_TEST_PORT` to a free port.
+The tests use a temporary cache directory that accepts writes from the container user.
+They remove their containers, temporary media, and cached thumbnails when they finish.
+
 ## Deployments
 
 The shared Tailscale gateway must already be running, because it creates the
@@ -49,6 +107,9 @@ all local and staging tests:
 ```bash
 cp .env.example .env
 docker build -t little-jukebox:local .
+mkdir -p cache/thumbnails
+sudo chown 101:"$(id -g)" cache/thumbnails
+sudo chmod 2775 cache/thumbnails
 docker compose config -q
 docker compose up -d
 ```
@@ -73,6 +134,9 @@ Start or update production from its deployment directory:
 ```bash
 docker compose config -q
 docker compose pull
+mkdir -p cache/thumbnails
+sudo chown 101:"$(id -g)" cache/thumbnails
+sudo chmod 2775 cache/thumbnails
 docker compose up -d
 ```
 

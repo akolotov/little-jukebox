@@ -1,5 +1,6 @@
 # Local Python environment
 .venv/
+__pycache__/
 
 # Deployment configuration
 .env
@@ -10,6 +11,7 @@ auth-data/
 # Agent working files and runtime media library
 .ai/
 data/
+cache/
 
 # macOS Finder metadata
 .DS_Store
